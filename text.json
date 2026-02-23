@@ -1,0 +1,70 @@
+{"text": " What's up guys, you are in the 11th video of Sigma Web Development Course. We have completed 10 videos. So one like is a must for our consistency. In today's video, we will see the cementing process.", "segments": [
+    {"id": 0, "seek": 0, "start": 0.0, "end": 3.7, "text": " What's up guys, you are in the 11th video of Sigma Web Development Course.", "tokens": [
+        50364,
+        708,
+        311,
+        493,
+        1074,
+        11,
+        291,
+        366,
+        294,
+        264,
+        2975,
+        392,
+        960,
+        295,
+        36595,
+        9573,
+        15041,
+        27327,
+        13,
+        50549
+      ], "temperature": 0.0, "avg_logprob": -0.7327157429286412, "compression_ratio": 1.3178807947019868, "no_speech_prob": 0.010811072774231434
+    },
+    {"id": 1, "seek": 0, "start": 3.7, "end": 5.7, "text": " We have completed 10 videos.", "tokens": [
+        50549,
+        492,
+        362,
+        7365,
+        1266,
+        2145,
+        13,
+        50649
+      ], "temperature": 0.0, "avg_logprob": -0.7327157429286412, "compression_ratio": 1.3178807947019868, "no_speech_prob": 0.010811072774231434
+    },
+    {"id": 2, "seek": 0, "start": 5.7, "end": 8.3, "text": " So one like is a must for our consistency.", "tokens": [
+        50649,
+        407,
+        472,
+        411,
+        307,
+        257,
+        1633,
+        337,
+        527,
+        14416,
+        13,
+        50779
+      ], "temperature": 0.0, "avg_logprob": -0.7327157429286412, "compression_ratio": 1.3178807947019868, "no_speech_prob": 0.010811072774231434
+    },
+    {"id": 3, "seek": 0, "start": 8.3, "end": 10.3, "text": " In today's video, we will see the cementing process.", "tokens": [
+        50779,
+        682,
+        965,
+        311,
+        960,
+        11,
+        321,
+        486,
+        536,
+        264,
+        19729,
+        278,
+        1399,
+        13,
+        50879
+      ], "temperature": 0.0, "avg_logprob": -0.7327157429286412, "compression_ratio": 1.3178807947019868, "no_speech_prob": 0.010811072774231434
+    }
+  ], "language": "hi"
+}

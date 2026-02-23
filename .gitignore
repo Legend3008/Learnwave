@@ -1,0 +1,49 @@
+# ── Python ────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual Environment ──────────────────
+venv/
+.venv/
+env/
+
+# ── Data & Artifacts ─────────────────────
+*.joblib
+data/
+uploads/
+audios/
+videos/
+jsons/
+chroma_store/
+
+# ── Media ────────────────────────────────
+*.mp3
+*.mp4
+*.wav
+*.webm
+
+# ── Runtime Outputs ──────────────────────
+prompt.txt
+response.txt
+output.json
+
+# ── IDE ──────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ── Environment ──────────────────────────
+.env
+.env.*
+
+# ── Logs ─────────────────────────────────
+*.log
+logs/

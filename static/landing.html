@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learnwave — Understand your documents</title>
+<meta name="description" content="Upload PDFs, lectures, and videos. Ask questions. Get cited answers in seconds. 100% private, runs locally.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════
+   RESET & TOKENS
+   ═══════════════════════════════════════════════════ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+:root{
+  --bg:#FAFAFA;--bg-alt:#F4F4F5;--bg-inv:#111112;
+  --tx:#111112;--tx-2:#3F3F46;--tx-3:#71717A;--tx-inv:#FAFAFA;
+  --ac:#4F46E5;--ac-h:#4338CA;--ac-s:rgba(79,70,229,0.07);--ac-rgb:79,70,229;
+  --bd:#E4E4E7;--bd-s:#D4D4D8;--bd-l:#F0F0F1;
+  --sh-sm:0 1px 2px rgba(0,0,0,0.05);
+  --sh-md:0 2px 8px rgba(0,0,0,0.07),0 1px 2px rgba(0,0,0,0.04);
+  --r-sm:6px;--r-md:10px;--r-lg:14px;--r-xl:20px;--r-pill:9999px;
+  --mw-t:680px;--mw-c:960px;--mw-w:1200px;
+  --ease:cubic-bezier(0.16,1,0.3,1);--dur:400ms;
+  --font-d:'Instrument Serif',Georgia,serif;
+  --font-b:'DM Sans',system-ui,sans-serif;
+}
+
+html{font-size:16px;scroll-behavior:smooth}
+body{font-family:var(--font-b);color:var(--tx-2);background:var(--bg);
+  line-height:1.7;-webkit-font-smoothing:antialiased}
+
+h1,h2,h3,h4{font-family:var(--font-d);color:var(--tx);font-weight:400;line-height:1.15}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+button{font-family:var(--font-b);cursor:pointer}
+
+.container{width:100%;max-width:var(--mw-w);margin:0 auto;padding:0 24px}
+.container--narrow{max-width:var(--mw-t)}
+.container--mid{max-width:var(--mw-c)}
+
+/* Scroll reveal */
+[data-r]{opacity:0;transform:translateY(20px);transition:opacity var(--dur) var(--ease),transform var(--dur) var(--ease)}
+[data-r].vis{opacity:1;transform:translateY(0)}
+
+/* ═══════════════════════════════════════════════════
+   NAV
+   ═══════════════════════════════════════════════════ */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:0 24px;height:64px;display:flex;align-items:center;justify-content:space-between;
+  background:transparent;border-bottom:1px solid transparent;
+  transition:background .25s var(--ease),border-color .25s var(--ease),backdrop-filter .25s var(--ease)}
+.nav.scrolled{background:rgba(250,250,250,0.82);backdrop-filter:blur(14px);border-color:var(--bd)}
+
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-mark{width:32px;height:32px;background:var(--tx);border-radius:var(--r-sm);
+  display:flex;align-items:center;justify-content:center}
+.nav-mark svg{width:18px;height:18px}
+.nav-name{font-family:var(--font-b);font-size:15px;font-weight:600;color:var(--tx);letter-spacing:-0.01em}
+
+.nav-links{display:flex;gap:32px;align-items:center}
+.nav-links a{font-size:14px;font-weight:500;color:var(--tx-3);transition:color .15s}
+.nav-links a:hover{color:var(--tx)}
+
+.nav-cta{display:inline-flex;align-items:center;gap:6px;
+  padding:8px 20px;border-radius:var(--r-pill);
+  background:var(--tx);color:var(--tx-inv);
+  font-size:14px;font-weight:500;border:none;
+  transition:background .15s var(--ease),transform .15s var(--ease)}
+.nav-cta:hover{background:#2D2D2E;transform:translateY(-1px)}
+.nav-cta:active{transform:translateY(0)}
+
+.nav-menu{display:none;background:none;border:none;padding:4px;color:var(--tx)}
+.nav-menu svg{width:24px;height:24px}
+
+/* Mobile nav */
+.mobile-drawer{display:none;position:fixed;top:64px;left:0;right:0;
+  background:rgba(250,250,250,0.96);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--bd);padding:24px;
+  flex-direction:column;gap:16px;z-index:99}
+.mobile-drawer.open{display:flex}
+.mobile-drawer a{font-size:16px;font-weight:500;color:var(--tx-2);padding:8px 0}
+
+@media(max-width:768px){
+  .nav-links{display:none}
+  .nav-menu{display:block}
+}
+
+/* ═══════════════════════════════════════════════════
+   HERO
+   ═══════════════════════════════════════════════════ */
+.hero{padding:160px 24px 80px;text-align:center}
+
+.hero-eyebrow{display:inline-flex;align-items:center;gap:8px;
+  padding:6px 16px;border-radius:var(--r-pill);
+  background:var(--ac-s);color:var(--ac);
+  font-size:13px;font-weight:600;letter-spacing:0.04em;
+  margin-bottom:32px}
+.hero-eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ac)}
+
+.hero h1{font-size:clamp(44px,7vw,84px);letter-spacing:-0.04em;
+  color:var(--tx);max-width:900px;margin:0 auto 24px}
+.hero h1 em{font-style:italic;
+  background:linear-gradient(135deg,#818CF8,#6366F1,#4F46E5,#22D3EE,#34D399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text}
+
+.hero-sub{font-size:clamp(17px,2vw,20px);color:var(--tx-3);
+  max-width:560px;margin:0 auto 40px;line-height:1.65;font-weight:400}
+
+.hero-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:48px}
+
+.btn-p{display:inline-flex;align-items:center;gap:8px;
+  padding:14px 28px;border-radius:var(--r-pill);
+  background:var(--tx);color:var(--tx-inv);
+  font-size:15px;font-weight:500;border:none;
+  transition:background .15s,transform .15s,box-shadow .15s}
+.btn-p:hover{background:#2D2D2E;transform:translateY(-1px);box-shadow:var(--sh-md)}
+.btn-p:active{transform:translateY(0)}
+.btn-p:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+
+.btn-s{display:inline-flex;align-items:center;gap:8px;
+  padding:13px 27px;border-radius:var(--r-pill);
+  background:transparent;color:var(--tx);
+  font-size:15px;font-weight:500;border:1px solid var(--bd-s);
+  transition:background .15s,border-color .15s}
+.btn-s:hover{background:var(--bg-alt);border-color:var(--tx-3)}
+.btn-s:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+
+.hero-proof{display:flex;align-items:center;justify-content:center;gap:12px;color:var(--tx-3);font-size:13px;font-weight:500}
+.hero-avatars{display:flex}
+.hero-avatars span{width:28px;height:28px;border-radius:50%;
+  border:2px solid var(--bg);margin-left:-8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;color:var(--tx-inv)}
+.hero-avatars span:first-child{margin-left:0}
+
+/* Hero visual */
+.hero-visual{max-width:960px;margin:56px auto 0;position:relative}
+.hero-screen{width:100%;aspect-ratio:16/9.5;border-radius:var(--r-xl);
+  border:1px solid var(--bd);background:var(--bg-alt);overflow:hidden;
+  box-shadow:0 8px 40px rgba(0,0,0,0.06),0 1px 4px rgba(0,0,0,0.04)}
+.hero-screen-inner{padding:24px;display:flex;gap:16px;height:100%}
+.hs-sidebar{width:200px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.hs-s-item{height:10px;border-radius:4px;background:var(--bd);width:80%}
+.hs-s-item:nth-child(2){width:65%}.hs-s-item:nth-child(3){width:75%}
+.hs-s-item.active{background:var(--ac);opacity:0.5;width:90%}
+.hs-main{flex:1;display:flex;flex-direction:column;gap:12px}
+.hs-m-line{height:10px;border-radius:4px;background:var(--bd-l)}
+.hs-m-line:nth-child(1){width:90%}.hs-m-line:nth-child(2){width:70%}
+.hs-m-line:nth-child(3){width:80%}.hs-m-line:nth-child(4){width:60%}
+.hs-m-block{flex:1;border-radius:var(--r-md);border:1px solid var(--bd);
+  display:flex;align-items:flex-end;padding:16px;gap:8px}
+.hs-m-bar{flex:1;border-radius:4px 4px 0 0;background:var(--ac);opacity:0.15}
+
+@media(max-width:768px){
+  .hero{padding:120px 24px 56px}
+  .hs-sidebar{display:none}
+}
+
+/* ═══════════════════════════════════════════════════
+   TRUST BAR
+   ═══════════════════════════════════════════════════ */
+.trust{padding:64px 24px;text-align:center;border-top:1px solid var(--bd-l)}
+.trust-label{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--tx-3);margin-bottom:32px}
+.trust-logos{display:flex;justify-content:center;align-items:center;gap:48px;flex-wrap:wrap;opacity:0.35}
+.trust-logos span{font-family:var(--font-b);font-size:18px;font-weight:600;color:var(--tx);letter-spacing:-0.02em}
+
+/* ═══════════════════════════════════════════════════
+   FEATURES
+   ═══════════════════════════════════════════════════ */
+.features{padding:120px 24px}
+.section-label{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ac);margin-bottom:16px}
+.section-head{font-size:clamp(30px,4vw,48px);letter-spacing:-0.03em;max-width:640px;margin-bottom:16px}
+.section-sub{font-size:17px;color:var(--tx-3);max-width:520px;margin-bottom:56px;line-height:1.65}
+
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.feat-card{padding:32px;border-radius:var(--r-lg);border:1px solid var(--bd);background:var(--bg);
+  transition:border-color .25s var(--ease),box-shadow .25s var(--ease)}
+.feat-card:hover{border-color:var(--bd-s);box-shadow:var(--sh-sm)}
+.feat-card:focus-within{outline:2px solid var(--ac);outline-offset:2px}
+
+.feat-icon{width:40px;height:40px;border-radius:var(--r-md);background:var(--ac-s);
+  display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.feat-icon svg{width:20px;height:20px;color:var(--ac);stroke:var(--ac);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+.feat-card h3{font-family:var(--font-b);font-size:16px;font-weight:600;color:var(--tx);margin-bottom:8px;letter-spacing:-0.01em}
+.feat-card p{font-size:14px;color:var(--tx-3);line-height:1.65}
+
+@media(max-width:768px){.feat-grid{grid-template-columns:1fr}}
+@media(min-width:769px) and (max-width:1024px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ═══════════════════════════════════════════════════
+   BENTO SHOWCASE
+   ═══════════════════════════════════════════════════ */
+.bento{padding:120px 24px}
+.bento-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;max-width:var(--mw-w);margin:0 auto}
+
+.b-cell{padding:40px;border-radius:var(--r-lg);border:1px solid var(--bd);background:var(--bg);
+  overflow:hidden;position:relative;
+  transition:border-color .25s var(--ease),box-shadow .25s var(--ease)}
+.b-cell:hover{border-color:var(--bd-s);box-shadow:var(--sh-md)}
+
+.b-hero{grid-column:span 7;grid-row:span 2;display:flex;flex-direction:column;justify-content:space-between}
+.b-tall{grid-column:span 5;grid-row:span 2}
+.b-wide{grid-column:span 6}
+.b-small{grid-column:span 6}
+
+.b-cell h3{font-size:clamp(22px,2.5vw,30px);letter-spacing:-0.02em;margin-bottom:12px;line-height:1.2}
+.b-cell p{font-size:15px;color:var(--tx-3);line-height:1.65;max-width:420px}
+.b-tag{display:inline-block;padding:4px 12px;border-radius:var(--r-pill);background:var(--ac-s);
+  color:var(--ac);font-size:12px;font-weight:600;margin-bottom:16px}
+
+.b-visual{margin-top:32px;border-radius:var(--r-md);background:var(--bg-alt);border:1px solid var(--bd-l);
+  height:180px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.b-visual-inner{display:flex;gap:8px;padding:16px;width:100%}
+.bv-line{height:8px;border-radius:4px;background:var(--bd)}
+.bv-accent{background:rgba(var(--ac-rgb),0.15)}
+
+/* Chat demo visual */
+.chat-demo{display:flex;flex-direction:column;gap:10px;padding:20px;width:100%}
+.cd-msg{max-width:70%;padding:10px 14px;border-radius:12px;font-size:12px;line-height:1.5;color:var(--tx-2)}
+.cd-user{align-self:flex-end;background:var(--tx);color:var(--tx-inv);border-bottom-right-radius:4px}
+.cd-ai{align-self:flex-start;background:var(--bg);border:1px solid var(--bd);border-bottom-left-radius:4px}
+.cd-cite{display:inline-block;padding:2px 8px;border-radius:var(--r-pill);background:var(--ac-s);
+  color:var(--ac);font-size:10px;font-weight:600;margin-top:6px}
+
+/* Privacy visual */
+.priv-visual{display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px}
+.priv-shield{width:48px;height:48px;border-radius:50%;background:rgba(34,197,94,0.08);
+  display:flex;align-items:center;justify-content:center;font-size:24px}
+.priv-bars{display:flex;gap:6px}
+.priv-bar{width:32px;height:6px;border-radius:3px;background:var(--bd)}
+.priv-bar.secure{background:rgba(34,197,94,0.3)}
+
+@media(max-width:768px){
+  .bento-grid{grid-template-columns:1fr}
+  .b-hero,.b-tall,.b-wide,.b-small{grid-column:span 1;grid-row:span 1}
+}
+
+/* ═══════════════════════════════════════════════════
+   HOW IT WORKS
+   ═══════════════════════════════════════════════════ */
+.how{padding:120px 24px;background:var(--bg-alt)}
+.how .section-head,.how .section-sub{text-align:center;margin-left:auto;margin-right:auto}
+.how .section-label{text-align:center}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:24px;max-width:var(--mw-w);margin:0 auto}
+.step{text-align:center;padding:32px 20px}
+.step-num{display:inline-flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:50%;
+  background:var(--bg);border:1px solid var(--bd);
+  font-family:var(--font-d);font-size:18px;color:var(--tx);margin-bottom:20px}
+.step h3{font-family:var(--font-b);font-size:15px;font-weight:600;color:var(--tx);margin-bottom:8px}
+.step p{font-size:13px;color:var(--tx-3);line-height:1.65}
+
+.steps-connector{display:none}
+
+@media(max-width:768px){
+  .steps{grid-template-columns:1fr 1fr;gap:16px}
+}
+@media(max-width:480px){
+  .steps{grid-template-columns:1fr}
+}
+
+/* ═══════════════════════════════════════════════════
+   TESTIMONIALS
+   ═══════════════════════════════════════════════════ */
+.testimonials{padding:120px 24px}
+.testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:var(--mw-w);margin:0 auto}
+
+.testi-card{padding:32px;border-radius:var(--r-lg);border:1px solid var(--bd);background:var(--bg)}
+.testi-quote{font-size:15px;color:var(--tx-2);line-height:1.7;margin-bottom:24px;position:relative;padding-top:20px}
+.testi-quote::before{content:'"';font-family:var(--font-d);font-size:48px;color:var(--ac);opacity:0.25;
+  position:absolute;top:-8px;left:0;line-height:1}
+.testi-author{display:flex;align-items:center;gap:12px}
+.testi-avatar{width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;color:var(--tx-inv)}
+.testi-name{font-size:14px;font-weight:600;color:var(--tx)}
+.testi-role{font-size:12px;color:var(--tx-3)}
+
+@media(max-width:768px){.testi-grid{grid-template-columns:1fr}}
+
+/* ═══════════════════════════════════════════════════
+   FINAL CTA
+   ═══════════════════════════════════════════════════ */
+.final-cta{padding:120px 24px;background:var(--bg-inv);text-align:center}
+.final-cta h2{color:var(--tx-inv);font-size:clamp(32px,5vw,56px);letter-spacing:-0.03em;margin-bottom:16px}
+.final-cta p{color:rgba(250,250,250,0.55);font-size:17px;max-width:480px;margin:0 auto 40px;line-height:1.65}
+.final-cta .btn-p{background:var(--tx-inv);color:var(--tx)}
+.final-cta .btn-p:hover{background:#E4E4E7;transform:translateY(-1px)}
+
+/* ═══════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════ */
+.footer{padding:64px 24px 32px;border-top:1px solid var(--bd)}
+.footer-inner{display:flex;justify-content:space-between;align-items:flex-start;
+  max-width:var(--mw-w);margin:0 auto;gap:48px;flex-wrap:wrap}
+.footer-brand p{font-size:13px;color:var(--tx-3);max-width:280px;margin-top:8px;line-height:1.6}
+.footer-cols{display:flex;gap:64px}
+.footer-col h4{font-family:var(--font-b);font-size:12px;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--tx-3);margin-bottom:16px}
+.footer-col a{display:block;font-size:14px;color:var(--tx-2);padding:4px 0;transition:color .15s}
+.footer-col a:hover{color:var(--tx)}
+
+.footer-bottom{max-width:var(--mw-w);margin:48px auto 0;padding-top:24px;
+  border-top:1px solid var(--bd-l);display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--tx-3)}
+.footer-bottom a{color:var(--tx-3);transition:color .15s}
+.footer-bottom a:hover{color:var(--tx)}
+
+@media(max-width:768px){
+  .footer-inner{flex-direction:column;gap:32px}
+  .footer-cols{flex-direction:column;gap:32px}
+  .footer-bottom{flex-direction:column;gap:8px;text-align:center}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV ═══ -->
+<nav class="nav" id="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-brand">
+    <div class="nav-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#FAFAFA" stroke-width="2" stroke-linecap="round"><path d="M4 19.5v-15A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 010-5H20"/></svg>
+    </div>
+    <span class="nav-name">Learnwave</span>
+  </div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#showcase">Showcase</a>
+    <a href="/docs" target="_blank">API</a>
+    <a href="/" class="nav-cta">Open App →</a>
+  </div>
+  <button class="nav-menu" id="navMenu" aria-label="Open menu">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+</nav>
+
+<div class="mobile-drawer" id="mobileDrawer">
+  <a href="#features" class="md-link">Features</a>
+  <a href="#how" class="md-link">How it works</a>
+  <a href="#showcase" class="md-link">Showcase</a>
+  <a href="/docs" target="_blank">API Docs</a>
+  <a href="/" class="nav-cta" style="text-align:center;display:block;margin-top:8px">Open App →</a>
+</div>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div data-r>
+    <div class="hero-eyebrow">Open Source &middot; 100% Local</div>
+  </div>
+  <h1 data-r style="transition-delay:80ms">Understand<br><em>Anything</em></h1>
+  <p class="hero-sub" data-r style="transition-delay:160ms">Upload your PDFs, lectures, and videos. Ask questions in plain language. Get cited answers in seconds — all running privately on your machine.</p>
+  <div class="hero-actions" data-r style="transition-delay:240ms">
+    <a href="/" class="btn-p">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      Try Learnwave
+    </a>
+    <a href="https://github.com" class="btn-s" target="_blank">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+      View Source
+    </a>
+  </div>
+  <div class="hero-proof" data-r style="transition-delay:320ms">
+    <div class="hero-avatars">
+      <span style="background:#6366F1">R</span>
+      <span style="background:#22D3EE">A</span>
+      <span style="background:#34D399">K</span>
+      <span style="background:#F59E0B">S</span>
+    </div>
+    <span>Built by researchers, for researchers</span>
+  </div>
+
+  <!-- App Visual -->
+  <div class="hero-visual" data-r style="transition-delay:400ms">
+    <div class="hero-screen">
+      <div class="hero-screen-inner">
+        <div class="hs-sidebar">
+          <div class="hs-s-item active"></div>
+          <div class="hs-s-item"></div>
+          <div class="hs-s-item"></div>
+          <div style="height:20px"></div>
+          <div class="hs-s-item" style="width:50%"></div>
+          <div class="hs-s-item" style="width:40%"></div>
+        </div>
+        <div class="hs-main">
+          <div class="hs-m-line"></div>
+          <div class="hs-m-line"></div>
+          <div class="hs-m-line"></div>
+          <div class="hs-m-line"></div>
+          <div class="hs-m-block">
+            <div class="hs-m-bar" style="height:40%"></div>
+            <div class="hs-m-bar" style="height:70%"></div>
+            <div class="hs-m-bar" style="height:55%"></div>
+            <div class="hs-m-bar" style="height:85%"></div>
+            <div class="hs-m-bar" style="height:45%"></div>
+            <div class="hs-m-bar" style="height:60%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TRUST BAR ═══ -->
+<section class="trust" data-r>
+  <div class="trust-label">Powered by</div>
+  <div class="trust-logos">
+    <span>Ollama</span>
+    <span>ChromaDB</span>
+    <span>FastAPI</span>
+    <span>PyMuPDF</span>
+    <span>BGE-M3</span>
+    <span>Llama 3.2</span>
+  </div>
+</section>
+
+<!-- ═══ FEATURES ═══ -->
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-label" data-r>Capabilities</div>
+    <h2 class="section-head" data-r style="transition-delay:60ms">Everything you need to learn from any document</h2>
+    <p class="section-sub" data-r style="transition-delay:120ms">Six capabilities working together to turn static content into interactive knowledge.</p>
+    <div class="feat-grid">
+
+      <div class="feat-card" data-r style="transition-delay:0ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+        <h3>Upload anything</h3>
+        <p>PDFs, videos, audio files — even scanned documents. Learnwave handles OCR, transcription, and table extraction automatically.</p>
+      </div>
+
+      <div class="feat-card" data-r style="transition-delay:60ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        <h3>Understands meaning</h3>
+        <p>BGE-M3 embeddings capture semantic meaning with 1,024 dimensions. Hybrid search combines both keyword and contextual relevance.</p>
+      </div>
+
+      <div class="feat-card" data-r style="transition-delay:120ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></div>
+        <h3>Conversational answers</h3>
+        <p>Multi-turn dialogue that remembers context. Ask follow-ups naturally — Learnwave reformulates your queries for better results.</p>
+      </div>
+
+      <div class="feat-card" data-r style="transition-delay:180ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+        <h3>Every answer cited</h3>
+        <p>Responses include exact page numbers, timestamps, and source excerpts. Verify any claim against the original document instantly.</p>
+      </div>
+
+      <div class="feat-card" data-r style="transition-delay:240ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+        <h3>Completely private</h3>
+        <p>Runs 100% on your machine. No cloud, no API keys, no data leaves your device. Powered by Ollama with Llama 3.2 locally.</p>
+      </div>
+
+      <div class="feat-card" data-r style="transition-delay:300ms">
+        <div class="feat-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+        <h3>Compare documents</h3>
+        <p>Analyze two documents side-by-side on any topic. Get structured comparisons highlighting similarities and key differences.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ BENTO SHOWCASE ═══ -->
+<section class="bento" id="showcase">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:64px">
+      <div class="section-label" data-r>Showcase</div>
+      <h2 class="section-head" data-r style="margin-left:auto;margin-right:auto;transition-delay:60ms">Designed for deep understanding</h2>
+    </div>
+  </div>
+  <div class="bento-grid">
+
+    <!-- Cell 1: Chat — large hero cell -->
+    <div class="b-cell b-hero" data-r>
+      <div class="b-tag">Core Experience</div>
+      <h3>Ask your lectures anything</h3>
+      <p>Upload a 3-hour video lecture. Within minutes, ask questions about any concept — Learnwave finds the exact moment and explains it with citations.</p>
+      <div class="b-visual">
+        <div class="chat-demo">
+          <div class="cd-msg cd-user">What is the difference between supervised and unsupervised learning?</div>
+          <div class="cd-msg cd-ai">
+            Supervised learning uses labeled data to train models, where each input has a corresponding output. Unsupervised learning discovers patterns in unlabeled data without predefined categories.
+            <div><span class="cd-cite">📄 ML_Intro.pdf · p.14</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cell 2: Privacy — tall side cell -->
+    <div class="b-cell b-tall" data-r style="transition-delay:80ms;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center">
+      <div class="priv-visual">
+        <div class="priv-shield">🔒</div>
+        <div class="priv-bars">
+          <div class="priv-bar secure"></div>
+          <div class="priv-bar secure"></div>
+          <div class="priv-bar secure"></div>
+          <div class="priv-bar"></div>
+        </div>
+      </div>
+      <h3 style="margin-top:24px">Your data never<br>leaves your machine</h3>
+      <p style="margin:12px auto 0;text-align:center">Ollama runs models locally. ChromaDB stores vectors on disk. Zero cloud dependency.</p>
+    </div>
+
+    <!-- Cell 3: Smart Chunking -->
+    <div class="b-cell b-wide" data-r style="transition-delay:120ms">
+      <div class="b-tag">Intelligence</div>
+      <h3>Structure-aware chunking</h3>
+      <p>Documents are split with awareness of headings, paragraphs, and semantic boundaries — not arbitrary character limits.</p>
+    </div>
+
+    <!-- Cell 4: Multi-format -->
+    <div class="b-cell b-small" data-r style="transition-delay:180ms">
+      <h3>Any format</h3>
+      <p>PDF, MP4, MP3, MKV, AVI, WAV — with automatic OCR for scanned pages.</p>
+      <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap">
+        <span style="padding:4px 10px;border-radius:var(--r-pill);background:var(--bg-alt);font-size:12px;font-weight:500;color:var(--tx-3)">.pdf</span>
+        <span style="padding:4px 10px;border-radius:var(--r-pill);background:var(--bg-alt);font-size:12px;font-weight:500;color:var(--tx-3)">.mp4</span>
+        <span style="padding:4px 10px;border-radius:var(--r-pill);background:var(--bg-alt);font-size:12px;font-weight:500;color:var(--tx-3)">.mp3</span>
+        <span style="padding:4px 10px;border-radius:var(--r-pill);background:var(--bg-alt);font-size:12px;font-weight:500;color:var(--tx-3)">.wav</span>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section class="how" id="how">
+  <div class="container">
+    <div class="section-label" data-r>How it works</div>
+    <h2 class="section-head" data-r style="transition-delay:60ms">From upload to insight in four steps</h2>
+    <p class="section-sub" data-r style="transition-delay:120ms">A retrieval-augmented generation pipeline, simplified.</p>
+    <div class="steps">
+      <div class="step" data-r style="transition-delay:0ms">
+        <div class="step-num">1</div>
+        <h3>Upload</h3>
+        <p>Drop your PDF or video file. FastAPI validates and routes it to the right processor.</p>
+      </div>
+      <div class="step" data-r style="transition-delay:80ms">
+        <div class="step-num">2</div>
+        <h3>Parse & chunk</h3>
+        <p>PyMuPDF extracts text and tables. Content is split into semantically meaningful chunks.</p>
+      </div>
+      <div class="step" data-r style="transition-delay:160ms">
+        <div class="step-num">3</div>
+        <h3>Embed & index</h3>
+        <p>BGE-M3 generates 1,024-dimensional vectors. ChromaDB stores them for fast cosine retrieval.</p>
+      </div>
+      <div class="step" data-r style="transition-delay:240ms">
+        <div class="step-num">4</div>
+        <h3>Ask & answer</h3>
+        <p>Hybrid search finds relevant passages. Llama 3.2 generates a cited answer from your documents.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ TESTIMONIALS ═══ -->
+<section class="testimonials">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:56px">
+      <div class="section-label" data-r>What people say</div>
+      <h2 class="section-head" data-r style="margin-left:auto;margin-right:auto;transition-delay:60ms">Trusted by learners and researchers</h2>
+    </div>
+    <div class="testi-grid">
+
+      <div class="testi-card" data-r>
+        <div class="testi-quote">I uploaded my entire semester's lecture PDFs and could find any concept in seconds. The citations pointing to exact pages saved me hours during exam prep.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#6366F1">A</div>
+          <div><div class="testi-name">Ananya Sharma</div><div class="testi-role">Graduate Student, CS</div></div>
+        </div>
+      </div>
+
+      <div class="testi-card" data-r style="transition-delay:80ms">
+        <div class="testi-quote">The fact that everything runs locally is a game-changer. I work with confidential research documents — knowing nothing leaves my laptop gives me real peace of mind.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#22D3EE">M</div>
+          <div><div class="testi-name">Dr. Marco Visalli</div><div class="testi-role">Research Fellow, Biomedics</div></div>
+        </div>
+      </div>
+
+      <div class="testi-card" data-r style="transition-delay:160ms">
+        <div class="testi-quote">I compared two competing frameworks across different papers and got a structured table of similarities and differences. It understood nuances I would have missed skimming.</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#34D399">K</div>
+          <div><div class="testi-name">Kenji Tanaka</div><div class="testi-role">PhD Candidate, Economics</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FINAL CTA ═══ -->
+<section class="final-cta">
+  <h2 data-r>Start understanding</h2>
+  <p data-r style="transition-delay:60ms">Upload your first document and ask a question. No account needed. No cloud. Just your knowledge, instantly searchable.</p>
+  <div data-r style="transition-delay:120ms">
+    <a href="/" class="btn-p" style="padding:16px 36px;font-size:16px">
+      Open Learnwave →
+    </a>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="nav-brand">
+        <div class="nav-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#FAFAFA" stroke-width="2" stroke-linecap="round"><path d="M4 19.5v-15A2.5 2.5 0 016.5 2H20v20H6.5a2.5 2.5 0 010-5H20"/></svg></div>
+        <span class="nav-name">Learnwave</span>
+      </div>
+      <p>AI teaching assistant that runs entirely on your machine. Upload documents, ask questions, get cited answers.</p>
+    </div>
+    <div class="footer-cols">
+      <div class="footer-col">
+        <h4>Product</h4>
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="/">Open App</a>
+        <a href="/docs" target="_blank">API Docs</a>
+      </div>
+      <div class="footer-col">
+        <h4>Stack</h4>
+        <a href="https://ollama.com" target="_blank">Ollama</a>
+        <a href="https://www.trychroma.com" target="_blank">ChromaDB</a>
+        <a href="https://fastapi.tiangolo.com" target="_blank">FastAPI</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <a href="/redoc" target="_blank">ReDoc</a>
+        <a href="/api/health" target="_blank">Health Check</a>
+        <a href="#">Changelog</a>
+      </div>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>&copy; 2026 Learnwave. Open source under MIT license.</span>
+    <span><a href="#">Privacy</a> &middot; <a href="#">Terms</a></span>
+  </div>
+</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   NAV — transparent → frosted on scroll
+   ═══════════════════════════════════════════════════ */
+const nav = document.getElementById('nav');
+let ticking = false;
+window.addEventListener('scroll', () => {
+  if (!ticking) {
+    requestAnimationFrame(() => {
+      nav.classList.toggle('scrolled', window.scrollY > 32);
+      ticking = false;
+    });
+    ticking = true;
+  }
+});
+
+/* ═══════════════════════════════════════════════════
+   MOBILE MENU
+   ═══════════════════════════════════════════════════ */
+const menuBtn = document.getElementById('navMenu');
+const drawer = document.getElementById('mobileDrawer');
+
+menuBtn.addEventListener('click', () => {
+  const open = drawer.classList.toggle('open');
+  menuBtn.setAttribute('aria-expanded', open);
+});
+
+drawer.querySelectorAll('a').forEach(a => {
+  a.addEventListener('click', () => drawer.classList.remove('open'));
+});
+
+/* ═══════════════════════════════════════════════════
+   SCROLL REVEAL — once per element, subtle
+   ═══════════════════════════════════════════════════ */
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('vis');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+document.querySelectorAll('[data-r]').forEach(el => observer.observe(el));
+
+/* ═══════════════════════════════════════════════════
+   SMOOTH ANCHOR SCROLL
+   ═══════════════════════════════════════════════════ */
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const target = document.querySelector(a.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+
+/* ═══════════════════════════════════════════════════
+   KEYBOARD: Escape closes mobile menu
+   ═══════════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') drawer.classList.remove('open');
+});
+</script>
+</body>
+</html>
