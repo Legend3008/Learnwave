@@ -1042,6 +1042,7 @@ input,textarea{font-family:var(--font);outline:none}
    ═══════════════════════════════════════════════════════════ */
 const API = '';
 let sources = [];
+let currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
 let chatHistory = [];
 let sourceCount = 0;
 let isStreaming = false;
@@ -1140,6 +1141,9 @@ function handleUpload(file) {
       item.docId = data.doc_id || data.document_id || data.id;
       item.status = 'ready';
       updateSourceItem(item);
+      /* Reset session so chat scopes to current sources */
+      currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
+      chatHistory = [];
       afterSourceReady(item);
     })
     .catch(() => {
@@ -1286,7 +1290,7 @@ function sendMessage() {
   fetch(API + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: text, session_id: 'ui_session', doc_ids: docIds.length ? docIds : null }),
+    body: JSON.stringify({ message: text, session_id: currentSessionId, doc_ids: docIds.length ? docIds : null }),
   })
     .then(r => {
       if (!r.ok) return r.text().then(t => { console.error('Chat API error:', r.status, t); return Promise.reject(t); });
@@ -1452,6 +1456,7 @@ document.getElementById('newNotebookBtn').addEventListener('click', () => {
   sources = [];
   sourceCount = 0;
   chatHistory = [];
+  currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
   updateSourceBadge();
   deactivateChat();
   disableStudio();
@@ -1639,6 +1644,10 @@ async function importURLServerSide(item) {
     item.docId = data.doc_id;
     item.name = data.title || item.name;
     item.status = 'ready';
+
+    /* Reset session so chat scopes to current sources */
+    currentSessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2,9);
+    chatHistory = [];
 
     /* Update the source item in the sidebar */
     if (el) {
