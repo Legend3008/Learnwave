@@ -80,12 +80,6 @@ class ChatRequest(BaseModel):
     doc_ids: Optional[list[str]] = None  # Filter to specific documents
     stream: bool = False
 
-class ChatResponse(BaseModel):
-    answer: str
-    citations: list[Citation] = []
-    session_id: str
-    suggested_questions: list[str] = []
-
 class Citation(BaseModel):
     doc_id: str
     filename: str
@@ -94,6 +88,12 @@ class Citation(BaseModel):
     end_time: Optional[float] = None
     text_snippet: str
     score: float
+
+class ChatResponse(BaseModel):
+    answer: str
+    citations: list[Citation] = Field(default_factory=list)
+    session_id: str
+    suggested_questions: list[str] = Field(default_factory=list)
 
 class DocumentUploadResponse(BaseModel):
     doc_id: str
@@ -113,8 +113,8 @@ class DocumentSummaryResponse(BaseModel):
     doc_id: str
     filename: str
     summary: str
-    key_concepts: list[str] = []
-    suggested_questions: list[str] = []
+    key_concepts: list[str] = Field(default_factory=list)
+    suggested_questions: list[str] = Field(default_factory=list)
 
 class DocumentListResponse(BaseModel):
     documents: list[DocumentMetadata]
@@ -123,13 +123,14 @@ class ConversationTurn(BaseModel):
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-    citations: list[Citation] = []
+    citations: list[Citation] = Field(default_factory=list)
 
 class ConversationHistory(BaseModel):
     session_id: str
-    turns: list[ConversationTurn] = []
+    turns: list[ConversationTurn] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    doc_ids: list[str] = []
+    doc_ids: list[str] = Field(default_factory=list)
+    title: str = "Untitled notebook"
 
 class HealthResponse(BaseModel):
     status: str
@@ -156,4 +157,3 @@ class URLImportResponse(BaseModel):
     chunk_count: int = 0
     word_count: int = 0
     message: str
-

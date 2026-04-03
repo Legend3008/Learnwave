@@ -35,17 +35,27 @@ class ConversationMemory:
 
     # ── Public API ────────────────────────────────────────────────────────
 
-    def create_session(self, doc_ids: Optional[list[str]] = None) -> str:
+    def create_session(self, doc_ids: Optional[list[str]] = None, title: str = "Untitled notebook") -> str:
         """Create a new conversation session."""
         session_id = str(uuid.uuid4())
         session = ConversationHistory(
             session_id=session_id,
             doc_ids=doc_ids or [],
+            title=title,
         )
         self._active_sessions[session_id] = session
         self._save_session(session)
         logger.info("Created session %s with docs %s", session_id[:8], doc_ids)
         return session_id
+
+    def rename_session(self, session_id: str, title: str) -> bool:
+        """Rename a session."""
+        session = self.get_session(session_id)
+        if not session:
+            return False
+        session.title = title
+        self._save_session(session)
+        return True
 
     def get_session(self, session_id: str) -> Optional[ConversationHistory]:
         """Retrieve a session, loading from disk if needed."""
@@ -132,19 +142,30 @@ class ConversationMemory:
             logger.info("Deleted session %s", session_id[:8])
 
     def list_sessions(self) -> list[dict]:
-        """List all available sessions."""
+        """List all available sessions with title and preview."""
         sessions = []
         for path in SESSIONS_DIR.glob("*.json"):
             try:
                 data = json.loads(path.read_text())
+                turns = data.get("turns", [])
+                # Extract first user message as preview
+                preview = ""
+                for t in turns:
+                    if t.get("role") == "user":
+                        preview = t.get("content", "")[:80]
+                        break
                 sessions.append({
                     "session_id": data.get("session_id", path.stem),
+                    "title": data.get("title", "Untitled notebook"),
                     "created_at": data.get("created_at", ""),
-                    "turn_count": len(data.get("turns", [])),
+                    "turn_count": len(turns),
                     "doc_ids": data.get("doc_ids", []),
+                    "preview": preview,
                 })
             except Exception:
                 continue
+        # Sort by created_at descending (newest first)
+        sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
         return sessions
 
     # ── History Compression ───────────────────────────────────────────────

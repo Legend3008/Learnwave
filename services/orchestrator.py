@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -275,6 +276,84 @@ class DocumentOrchestrator:
             "suggested_questions": questions,
         }
 
+    def get_page_contents(
+        self,
+        doc_id: str,
+        start_page: int,
+        end_page: Optional[int] = None,
+    ) -> Optional[dict]:
+        """
+        Read exact page content from a stored PDF.
+
+        This is a deterministic fallback for page-specific questions like
+        "what is on page 3?" where vector similarity is unnecessary.
+        """
+        metadata = self.get_metadata(doc_id)
+        if not metadata or metadata.doc_type != DocumentType.PDF:
+            return None
+
+        end_page = end_page or start_page
+        if start_page > end_page:
+            start_page, end_page = end_page, start_page
+
+        page_count = metadata.page_count or 0
+        if start_page < 1 or (page_count and end_page > page_count):
+            return {
+                "status": "out_of_range",
+                "doc_id": doc_id,
+                "filename": metadata.filename,
+                "title": metadata.title or metadata.filename,
+                "page_count": page_count,
+                "pages": [],
+                "text": "",
+            }
+
+        file_path = self._get_document_file_path(metadata)
+        pages: list[dict] = []
+
+        for page_number in range(start_page, end_page + 1):
+            text = ""
+            source = "none"
+
+            if file_path and file_path.exists():
+                text = self._extract_pdf_page_text(file_path, page_number)
+                if text.strip():
+                    source = "pdf"
+
+            if not text.strip():
+                chunks = self.vector_store.get_chunks(
+                    doc_ids=[doc_id],
+                    page_range=(page_number, page_number),
+                    include_parents=False,
+                )
+                text = "\n\n".join(c["text"] for c in chunks if c.get("text"))
+                if text.strip():
+                    source = "vector_store"
+
+            cleaned = self._clean_page_text(text)
+            pages.append({
+                "page_number": page_number,
+                "text": cleaned,
+                "source": source,
+            })
+
+        combined = "\n\n".join(
+            f"[Page {page['page_number']}]\n{page['text']}"
+            for page in pages
+            if page["text"]
+        ).strip()
+
+        status = "ok" if combined else "empty"
+        return {
+            "status": status,
+            "doc_id": doc_id,
+            "filename": metadata.filename,
+            "title": metadata.title or metadata.filename,
+            "page_count": page_count,
+            "pages": pages,
+            "text": combined,
+        }
+
     def delete_document(self, doc_id: str) -> bool:
         """Delete a document and all its vectors."""
         deleted = self.vector_store.delete_document(doc_id)
@@ -347,3 +426,37 @@ class DocumentOrchestrator:
                 logger.warning("Failed to load metadata %s: %s", path.name, e)
 
         logger.info("Loaded %d document metadata records", len(self._metadata_cache))
+
+    def _get_document_file_path(self, metadata: DocumentMetadata) -> Optional[Path]:
+        """Resolve the on-disk file for an uploaded document."""
+        if not metadata.filename:
+            return None
+        candidate = UPLOAD_DIR / metadata.filename
+        return candidate if candidate.exists() else None
+
+    def _extract_pdf_page_text(self, file_path: Path, page_number: int) -> str:
+        """Extract text from a specific PDF page using pypdf."""
+        try:
+            from pypdf import PdfReader
+
+            reader = PdfReader(str(file_path))
+            if page_number < 1 or page_number > len(reader.pages):
+                return ""
+
+            text = reader.pages[page_number - 1].extract_text() or ""
+            return text
+        except Exception as e:
+            logger.warning(
+                "Exact page extraction failed for %s page %d: %s",
+                file_path.name,
+                page_number,
+                e,
+            )
+            return ""
+
+    def _clean_page_text(self, text: str) -> str:
+        """Normalize page text for display and prompting."""
+        text = text.replace("\x00", " ")
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()

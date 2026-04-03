@@ -9,8 +9,12 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+try:
+    import chromadb
+    from chromadb.config import Settings as ChromaSettings
+except ImportError:  # pragma: no cover - exercised in lightweight test envs
+    chromadb = None
+    ChromaSettings = None
 
 from config import CHROMA_DIR, CHROMA_COLLECTION_NAME
 from models.schemas import Chunk
@@ -28,6 +32,8 @@ class VectorStore:
     """
 
     def __init__(self, embedding_service: EmbeddingService):
+        if chromadb is None or ChromaSettings is None:
+            raise RuntimeError("chromadb is not installed")
         self.embedding_service = embedding_service
         self._client = chromadb.PersistentClient(
             path=str(CHROMA_DIR),
@@ -142,12 +148,13 @@ class VectorStore:
         query_text: str,
         top_k: int = 20,
         doc_ids: Optional[list[str]] = None,
+        page_range: Optional[tuple[int, int]] = None,
     ) -> list[dict]:
         """
         Keyword/text-based search (ChromaDB's built-in document search).
         Useful for hybrid search alongside semantic search.
         """
-        where_filter = self._build_filter(doc_ids)
+        where_filter = self._build_filter(doc_ids, page_range)
 
         try:
             results = self._collection.query(
@@ -161,6 +168,45 @@ class VectorStore:
             return []
 
         return self._format_results(results)
+
+    def get_chunks(
+        self,
+        doc_ids: Optional[list[str]] = None,
+        page_range: Optional[tuple[int, int]] = None,
+        include_parents: bool = True,
+        limit: Optional[int] = None,
+    ) -> list[dict]:
+        """
+        Fetch chunks by metadata rather than similarity.
+
+        Useful for direct page lookups like "what is on page 3?" where
+        deterministic page filtering works better than semantic retrieval.
+        """
+        where_filter = self._build_filter(
+            doc_ids=doc_ids,
+            page_range=page_range,
+            is_parent=None if include_parents else False,
+        )
+
+        try:
+            results = self._collection.get(
+                where=where_filter,
+                include=["documents", "metadatas"],
+            )
+        except Exception as e:
+            logger.error("ChromaDB get failed: %s", e)
+            return []
+
+        formatted = self._format_get_results(results)
+        formatted.sort(
+            key=lambda r: (
+                r["metadata"].get("page_number", 0),
+                r["metadata"].get("chunk_index", 0),
+            )
+        )
+        if limit is not None:
+            return formatted[:limit]
+        return formatted
 
     # ── Stats / Info ──────────────────────────────────────────────────────
 
@@ -219,6 +265,7 @@ class VectorStore:
         self,
         doc_ids: Optional[list[str]] = None,
         page_range: Optional[tuple[int, int]] = None,
+        is_parent: Optional[bool] = None,
     ) -> Optional[dict]:
         """Build a ChromaDB where filter."""
         conditions = []
@@ -232,6 +279,9 @@ class VectorStore:
             start, end = page_range
             conditions.append({"page_number": {"$gte": start}})
             conditions.append({"page_number": {"$lte": end}})
+
+        if is_parent is not None:
+            conditions.append({"is_parent": is_parent})
 
         if not conditions:
             return None
@@ -262,6 +312,26 @@ class VectorStore:
                 "text": documents[i] if i < len(documents) else "",
                 "metadata": metadatas[i] if i < len(metadatas) else {},
                 "score": score,
+            })
+
+        return formatted
+
+    def _format_get_results(self, results: dict) -> list[dict]:
+        """Format ChromaDB get results into the same shape as search results."""
+        formatted = []
+        if not results or not results.get("ids"):
+            return formatted
+
+        ids = results.get("ids", [])
+        documents = results.get("documents", [])
+        metadatas = results.get("metadatas", [])
+
+        for i, chunk_id in enumerate(ids):
+            formatted.append({
+                "chunk_id": chunk_id,
+                "text": documents[i] if i < len(documents) else "",
+                "metadata": metadatas[i] if i < len(metadatas) else {},
+                "score": 1.0,
             })
 
         return formatted

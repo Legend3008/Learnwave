@@ -5,6 +5,7 @@ Run with: pytest tests/ -v
 
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -191,6 +192,57 @@ class TestRetrievalService:
         sim = svc._text_similarity("hello world foo", "hello world bar")
         assert 0 < sim < 1
         assert svc._text_similarity("abc", "abc") == 1.0
+
+    def test_extract_page_range_supports_digits_and_words(self):
+        from services.retrieval import RetrievalService
+        svc = RetrievalService.__new__(RetrievalService)
+        assert svc._extract_page_range("tell me the contents of page 3") == (3, 3)
+        assert svc._extract_page_range("What is in the page three of this document?") == (3, 3)
+        assert svc._extract_page_range("summarize pages 2 to 4") == (2, 4)
+
+    def test_direct_page_lookup_uses_exact_page_chunks(self):
+        from services.retrieval import RetrievalService
+
+        vector_store = MagicMock()
+        vector_store.get_chunks.return_value = [{
+            "chunk_id": "chunk-1",
+            "text": "Page 3 content",
+            "metadata": {
+                "doc_id": "doc-1",
+                "page_number": 3,
+                "chunk_index": 0,
+                "token_count": 10,
+            },
+            "score": 1.0,
+        }]
+
+        svc = RetrievalService(vector_store)
+        results = svc.retrieve("tell me the contents of page three", doc_ids=["doc-1"])
+
+        assert len(results) == 1
+        assert results[0].chunk.page_number == 3
+        vector_store.get_chunks.assert_called_once_with(
+            doc_ids=["doc-1"],
+            page_range=(3, 3),
+            include_parents=False,
+        )
+        vector_store.search.assert_not_called()
+        vector_store.search_by_text.assert_not_called()
+
+    def test_page_scoped_queries_apply_page_filter_to_hybrid_search(self):
+        from services.retrieval import RetrievalService
+
+        vector_store = MagicMock()
+        vector_store.search.return_value = []
+        vector_store.search_by_text.return_value = []
+
+        svc = RetrievalService(vector_store)
+        svc.retrieve("What does page 3 say about algebra?", doc_ids=["doc-1"])
+
+        assert vector_store.search.called
+        assert vector_store.search_by_text.called
+        assert vector_store.search.call_args.kwargs["page_range"] == (3, 3)
+        assert vector_store.search_by_text.call_args.kwargs["page_range"] == (3, 3)
 
 
 # ── Schema / Model Tests ─────────────────────────────────────────────────────

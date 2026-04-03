@@ -17,6 +17,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import sys
 import uuid
@@ -75,6 +76,131 @@ llm_service: LLMService
 retrieval_service: RetrievalService
 conversation_memory: ConversationMemory
 orchestrator: DocumentOrchestrator
+
+
+def _display_document_name(filename: str) -> str:
+    """Strip the upload prefix for user-facing messages."""
+    return re.sub(r"^[a-f0-9]{20,}_", "", filename or "")
+
+
+def _format_page_label(start_page: int, end_page: int) -> str:
+    """Create a human-readable page label."""
+    return f"page {start_page}" if start_page == end_page else f"pages {start_page}-{end_page}"
+
+
+def _get_effective_doc_ids(
+    request_doc_ids: Optional[list[str]],
+    session_id: str,
+) -> Optional[list[str]]:
+    """Prefer request doc_ids, otherwise fall back to the session's bound docs."""
+    if request_doc_ids:
+        return request_doc_ids
+
+    session = conversation_memory.get_session(session_id)
+    if session and session.doc_ids:
+        return list(session.doc_ids)
+
+    return None
+
+
+def _try_exact_page_response(
+    message: str,
+    doc_ids: Optional[list[str]],
+) -> Optional[dict]:
+    """
+    Answer page-specific PDF questions by reading the exact page content.
+
+    This bypasses fuzzy retrieval for requests like "what is on page 3?"
+    and mirrors how a tool-using assistant would inspect the actual page.
+    """
+    page_range = retrieval_service.extract_page_range(message)
+    if not page_range or not doc_ids:
+        return None
+
+    if len(doc_ids) != 1:
+        return {
+            "answer": (
+                f"Page-specific questions work best with a single selected document. "
+                f"You currently have {len(doc_ids)} sources selected."
+            ),
+            "citations": [],
+            "suggested_questions": [],
+        }
+
+    page_result = orchestrator.get_page_contents(
+        doc_id=doc_ids[0],
+        start_page=page_range[0],
+        end_page=page_range[1],
+    )
+    if not page_result:
+        return None
+
+    filename = page_result["filename"]
+    display_name = _display_document_name(filename)
+    page_label = _format_page_label(page_range[0], page_range[1])
+
+    if page_result["status"] == "out_of_range":
+        page_count = page_result.get("page_count") or 0
+        verb = "is" if page_range[0] == page_range[1] else "are"
+        noun = "page" if page_count == 1 else "pages"
+        return {
+            "answer": (
+                f"{display_name} has {page_count} {noun}, so {page_label} {verb} out of range."
+            ),
+            "citations": [],
+            "suggested_questions": [],
+        }
+
+    pages = [page for page in page_result["pages"] if page.get("text")]
+    if not pages:
+        target = "that page" if page_range[0] == page_range[1] else "those pages"
+        return {
+            "answer": (
+                f"I found {page_label} in {display_name}, but I couldn't extract readable text from {target}."
+            ),
+            "citations": [],
+            "suggested_questions": [],
+        }
+
+    citations = [
+        Citation(
+            doc_id=page_result["doc_id"],
+            filename=filename,
+            page_number=page["page_number"],
+            text_snippet=page["text"][:200],
+            score=1.0,
+        )
+        for page in pages
+    ]
+
+    context = "\n\n".join(
+        f"--- Source {i + 1}: [Page {page['page_number']}, Document: {filename}] ---\n{page['text']}"
+        for i, page in enumerate(pages)
+    )
+
+    if retrieval_service.is_direct_page_lookup(message):
+        if len(pages) == 1:
+            answer = f"Page {pages[0]['page_number']} of {display_name} contains:\n\n{pages[0]['text']}"
+        else:
+            answer = "\n\n".join(
+                f"Page {page['page_number']} of {display_name} contains:\n\n{page['text']}"
+                for page in pages
+            )
+    else:
+        answer = llm_service.generate_answer(
+            query=message,
+            context=context,
+            citations=citations,
+            conversation_history=None,
+            intent=retrieval_service.classify_intent(message),
+        )
+
+    suggested_questions = llm_service.suggest_questions(context, message)
+    return {
+        "answer": answer,
+        "citations": citations,
+        "suggested_questions": suggested_questions,
+    }
 
 
 @asynccontextmanager
@@ -321,11 +447,29 @@ async def chat(request: ChatRequest):
     # Session management
     session_id = request.session_id or conversation_memory.create_session(request.doc_ids)
     history = conversation_memory.get_recent_history(session_id)
+    effective_doc_ids = _get_effective_doc_ids(request.doc_ids, session_id)
 
-    # Query reformulation for follow-ups
+    # Page-scoped questions should use the original wording and exact page lookup.
     query = request.message
-    if history:
+    page_range = retrieval_service.extract_page_range(request.message)
+    if history and not page_range:
         query = llm_service.reformulate_query(query, history)
+
+    exact_response = _try_exact_page_response(request.message, effective_doc_ids)
+    if exact_response:
+        conversation_memory.add_turn(session_id, "user", request.message)
+        conversation_memory.add_turn(
+            session_id,
+            "assistant",
+            exact_response["answer"],
+            exact_response["citations"],
+        )
+        return ChatResponse(
+            answer=exact_response["answer"],
+            session_id=session_id,
+            citations=exact_response["citations"],
+            suggested_questions=exact_response["suggested_questions"],
+        )
 
     # Classify intent
     intent = retrieval_service.classify_intent(query)
@@ -333,7 +477,7 @@ async def chat(request: ChatRequest):
     # Retrieve relevant chunks
     retrieved = retrieval_service.retrieve(
         query=query,
-        doc_ids=request.doc_ids,
+        doc_ids=effective_doc_ids,
     )
 
     if not retrieved:
@@ -348,7 +492,7 @@ async def chat(request: ChatRequest):
         )
 
     # Build context with citations
-    doc_metadata = orchestrator.get_doc_metadata_map(request.doc_ids)
+    doc_metadata = orchestrator.get_doc_metadata_map(effective_doc_ids)
     context, citations = retrieval_service.build_context(retrieved, doc_metadata)
 
     # Generate answer
@@ -385,20 +529,55 @@ async def chat_stream(request: ChatRequest):
 
     session_id = request.session_id or conversation_memory.create_session(request.doc_ids)
     history = conversation_memory.get_recent_history(session_id)
+    effective_doc_ids = _get_effective_doc_ids(request.doc_ids, session_id)
 
     query = request.message
-    if history:
+    page_range = retrieval_service.extract_page_range(request.message)
+    if history and not page_range:
         query = llm_service.reformulate_query(query, history)
 
+    exact_response = _try_exact_page_response(request.message, effective_doc_ids)
     intent = retrieval_service.classify_intent(query)
 
-    retrieved = retrieval_service.retrieve(query=query, doc_ids=request.doc_ids)
+    retrieved = []
+    citations = []
+    context = ""
 
-    doc_metadata = orchestrator.get_doc_metadata_map(request.doc_ids)
-    context, citations = retrieval_service.build_context(retrieved, doc_metadata)
+    if not exact_response:
+        retrieved = retrieval_service.retrieve(query=query, doc_ids=effective_doc_ids)
+        if not retrieved:
+            exact_response = {
+                "answer": (
+                    "I couldn't find relevant information in your documents to answer this question. "
+                    "Try rephrasing or uploading additional documents."
+                ),
+                "citations": [],
+                "suggested_questions": [],
+            }
+        else:
+            doc_metadata = orchestrator.get_doc_metadata_map(effective_doc_ids)
+            context, citations = retrieval_service.build_context(retrieved, doc_metadata)
 
     def event_generator():
         import json as _json
+
+        if exact_response:
+            answer = exact_response["answer"]
+            yield f"data: {_json.dumps({'token': answer})}\n\n"
+            conversation_memory.add_turn(session_id, "user", request.message)
+            conversation_memory.add_turn(
+                session_id,
+                "assistant",
+                answer,
+                exact_response["citations"],
+            )
+            final = {
+                "done": True,
+                "session_id": session_id,
+                "citations": [c.model_dump(mode="json") for c in exact_response["citations"]],
+            }
+            yield f"data: {_json.dumps(final)}\n\n"
+            return
 
         full_response = []
         for token in llm_service.generate_answer_stream(
@@ -439,11 +618,13 @@ async def chat_history(session_id: str):
 
     return {
         "session_id": session.session_id,
+        "title": getattr(session, 'title', 'Untitled notebook'),
         "turns": [
             {
                 "role": t.role,
                 "content": t.content,
                 "timestamp": t.timestamp.isoformat(),
+                "citations": [c.model_dump(mode="json") for c in t.citations] if t.citations else [],
             }
             for t in session.turns
         ],
@@ -461,6 +642,18 @@ async def delete_session(session_id: str):
     """Delete a conversation session."""
     conversation_memory.delete_session(session_id)
     return {"message": f"Session {session_id} deleted"}
+
+
+class RenameSessionRequest(BaseModel):
+    title: str
+
+@app.patch("/api/chat/{session_id}", tags=["Chat"])
+async def rename_session(session_id: str, request: RenameSessionRequest):
+    """Rename a conversation session."""
+    ok = conversation_memory.rename_session(session_id, request.title)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "title": request.title}
 
 
 # ── Cross-Document Comparison ─────────────────────────────────────────────────

@@ -10,7 +10,8 @@ Multi-stage retrieval pipeline:
 from __future__ import annotations
 
 import logging
-from typing import Optional
+import re
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -20,7 +21,9 @@ from config import (
     SIMILARITY_THRESHOLD,
 )
 from models.schemas import Chunk, RetrievedChunk, Citation, QueryIntent
-from services.vector_store import VectorStore
+
+if TYPE_CHECKING:
+    from services.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +55,29 @@ class RetrievalService:
         Returns:
             List of RetrievedChunk with scores and metadata.
         """
+        page_range = self._extract_page_range(query)
+
+        if page_range and self._is_direct_page_lookup(query):
+            page_chunks = self.vector_store.get_chunks(
+                doc_ids=doc_ids,
+                page_range=page_range,
+                include_parents=False,
+            )
+            retrieved = [self._result_to_retrieved_chunk(r) for r in page_chunks]
+            logger.info(
+                "Direct page lookup for query '%s' returned %d chunks from pages %s-%s",
+                query[:80],
+                len(retrieved),
+                page_range[0],
+                page_range[1],
+            )
+            return retrieved[:top_k]
+
         # Stage 1: Query understanding
         sub_queries = self._expand_query(query)
 
         # Stage 2: Hybrid search (semantic + keyword)
-        all_results = self._hybrid_search(sub_queries, doc_ids)
+        all_results = self._hybrid_search(sub_queries, doc_ids, page_range)
 
         # Stage 3: Score fusion & deduplication
         fused = self._fuse_results(all_results)
@@ -77,6 +98,14 @@ class RetrievalService:
             len(diverse),
         )
         return filtered[:top_k]
+
+    def extract_page_range(self, query: str) -> Optional[tuple[int, int]]:
+        """Public wrapper for page-range extraction."""
+        return self._extract_page_range(query)
+
+    def is_direct_page_lookup(self, query: str) -> bool:
+        """Public wrapper for direct page-content lookup detection."""
+        return self._is_direct_page_lookup(query)
 
     def build_context(
         self,
@@ -169,6 +198,7 @@ class RetrievalService:
         self,
         queries: list[str],
         doc_ids: Optional[list[str]] = None,
+        page_range: Optional[tuple[int, int]] = None,
     ) -> list[dict]:
         """Run semantic and keyword search for all queries."""
         all_results = []
@@ -179,6 +209,7 @@ class RetrievalService:
                 query=query,
                 top_k=TOP_K_RETRIEVAL,
                 doc_ids=doc_ids,
+                page_range=page_range,
             )
             for r in semantic_results:
                 r["search_type"] = "semantic"
@@ -189,6 +220,7 @@ class RetrievalService:
                 query_text=query,
                 top_k=TOP_K_RETRIEVAL // 2,
                 doc_ids=doc_ids,
+                page_range=page_range,
             )
             for r in keyword_results:
                 r["search_type"] = "keyword"
@@ -238,22 +270,11 @@ class RetrievalService:
 
         retrieved = []
         for entry in sorted_chunks:
-            r = entry["result"]
-            meta = r.get("metadata", {})
-            chunk = Chunk(
-                chunk_id=r["chunk_id"],
-                doc_id=meta.get("doc_id", ""),
-                text=r["text"],
-                page_number=meta.get("page_number"),
-                section=meta.get("section"),
-                chunk_index=meta.get("chunk_index", 0),
-                token_count=meta.get("token_count", 0),
-                start_time=meta.get("start_time"),
-                end_time=meta.get("end_time"),
-            )
-            retrieved.append(
-                RetrievedChunk(chunk=chunk, score=entry["orig_score"], rerank_score=entry["rrf"])
-            )
+            retrieved.append(self._result_to_retrieved_chunk(
+                entry["result"],
+                score=entry["orig_score"],
+                rerank_score=entry["rrf"],
+            ))
 
         return retrieved
 
@@ -355,3 +376,172 @@ class RetrievalService:
         intersection = words1 & words2
         union = words1 | words2
         return len(intersection) / len(union)
+
+    def _result_to_retrieved_chunk(
+        self,
+        result: dict,
+        score: Optional[float] = None,
+        rerank_score: Optional[float] = None,
+    ) -> RetrievedChunk:
+        """Convert a vector-store result dict into a RetrievedChunk."""
+        meta = result.get("metadata", {})
+        chunk = Chunk(
+            chunk_id=result["chunk_id"],
+            doc_id=meta.get("doc_id", ""),
+            text=result.get("text", ""),
+            page_number=meta.get("page_number"),
+            section=meta.get("section"),
+            chunk_index=meta.get("chunk_index", 0),
+            token_count=meta.get("token_count", 0),
+            start_time=meta.get("start_time"),
+            end_time=meta.get("end_time"),
+        )
+        resolved_score = result.get("score", 0.0) if score is None else score
+        return RetrievedChunk(
+            chunk=chunk,
+            score=resolved_score,
+            rerank_score=rerank_score,
+        )
+
+    def _extract_page_range(self, query: str) -> Optional[tuple[int, int]]:
+        """Extract page constraints like 'page 3' or 'pages three to five'."""
+        text = query.lower()
+
+        range_match = re.search(
+            r"\bpages?\s+([a-z0-9][a-z0-9\s-]*)\s+(?:to|through|thru|-)\s+([a-z0-9][a-z0-9\s-]*)\b",
+            text,
+        )
+        if range_match:
+            start = self._parse_page_number(range_match.group(1))
+            end = self._parse_page_number(range_match.group(2))
+            if start and end:
+                return (min(start, end), max(start, end))
+
+        single_match = re.search(r"\bpage\s+([a-z0-9][a-z0-9\s-]*)\b", text)
+        if single_match:
+            page = self._parse_page_number(single_match.group(1))
+            if page:
+                return (page, page)
+
+        return None
+
+    def _parse_page_number(self, value: str) -> Optional[int]:
+        """Parse digits or simple number words into a page number."""
+        cleaned = re.sub(r"[^a-z0-9\s-]", " ", value.lower()).replace("-", " ")
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if not cleaned:
+            return None
+
+        units = {
+            "one": 1,
+            "two": 2,
+            "three": 3,
+            "four": 4,
+            "five": 5,
+            "six": 6,
+            "seven": 7,
+            "eight": 8,
+            "nine": 9,
+            "ten": 10,
+            "eleven": 11,
+            "twelve": 12,
+            "thirteen": 13,
+            "fourteen": 14,
+            "fifteen": 15,
+            "sixteen": 16,
+            "seventeen": 17,
+            "eighteen": 18,
+            "nineteen": 19,
+        }
+        tens = {
+            "twenty": 20,
+            "thirty": 30,
+            "forty": 40,
+            "fifty": 50,
+            "sixty": 60,
+            "seventy": 70,
+            "eighty": 80,
+            "ninety": 90,
+        }
+        ordinals = {
+            "first": 1,
+            "second": 2,
+            "third": 3,
+            "fourth": 4,
+            "fifth": 5,
+            "sixth": 6,
+            "seventh": 7,
+            "eighth": 8,
+            "ninth": 9,
+            "tenth": 10,
+            "eleventh": 11,
+            "twelfth": 12,
+            "thirteenth": 13,
+            "fourteenth": 14,
+            "fifteenth": 15,
+            "sixteenth": 16,
+            "seventeenth": 17,
+            "eighteenth": 18,
+            "nineteenth": 19,
+            "twentieth": 20,
+        }
+
+        tokens = [token for token in cleaned.split() if token != "and"]
+        if not tokens:
+            return None
+
+        if tokens[0].isdigit():
+            return int(tokens[0])
+
+        total = 0
+        current = 0
+
+        for token in tokens:
+            if token in ordinals:
+                current += ordinals[token]
+            elif token in units:
+                current += units[token]
+            elif token in tens:
+                current += tens[token]
+            elif token == "hundred":
+                current = max(1, current) * 100
+            else:
+                if current > 0:
+                    break
+                return None
+
+        total += current
+        return total or None
+
+    def _is_direct_page_lookup(self, query: str) -> bool:
+        """Detect questions that want the raw content of a specific page."""
+        lowered = query.lower()
+        if not self._extract_page_range(lowered):
+            return False
+
+        if any(marker in lowered for marker in [
+            "about ",
+            "regarding ",
+            "mention",
+            "mentions",
+            "say about",
+            "why ",
+            "how ",
+            "who ",
+            "when ",
+            "where ",
+        ]):
+            return False
+
+        return any(marker in lowered for marker in [
+            "content of",
+            "contents of",
+            "what is in",
+            "what's in",
+            "what is on",
+            "what's on",
+            "tell me",
+            "show me",
+            "give me",
+            "read page",
+        ])

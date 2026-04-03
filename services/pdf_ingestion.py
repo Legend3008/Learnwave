@@ -11,7 +11,10 @@ import re
 from pathlib import Path
 from typing import Optional
 
-import fitz  # PyMuPDF
+try:
+    import fitz  # PyMuPDF
+except ImportError:  # pragma: no cover - exercised in lightweight test envs
+    fitz = None
 
 from config import OCR_ENABLED, OCR_LANGUAGE, UPLOAD_DIR
 from models.schemas import DocumentMetadata, DocumentType, ProcessingStatus
@@ -39,6 +42,8 @@ class PDFIngestionService:
                 - has_images: bool
         """
         file_path = Path(file_path)
+        if fitz is None:
+            raise RuntimeError("PyMuPDF (fitz) is not installed")
         if not file_path.exists():
             raise FileNotFoundError(f"PDF not found: {file_path}")
         if not file_path.suffix.lower() == ".pdf":
